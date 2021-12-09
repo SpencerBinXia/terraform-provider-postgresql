@@ -104,38 +104,6 @@ func resourcePostgreSQLGrant() *schema.Resource {
 	}
 }
 
-//private function?
-//question whether we want to allow further modularity with regex, etc...
-func validateWildcardSchemas(db *DBConnection, d *schema.ResourceData) (bool, error) {
-
-	//not 100% sure if an explicit transaction commit is necessary here considering its read-only.
-	//not sure how the underlying package is closing transactions for queries....
-	database := d.Get("database").(string)
-	txn, err := startTransaction(db.client, database)
-	if err != nil {
-		return false, err
-	}
-	defer deferredRollback(txn)
-
-	schemaName := d.Get("schema").(string)
-	var isWildcardSchema = false
-
-	if query, exists := schemaWildcardQueries[schemaName]; exists {
-		var wildcardSchemas pq.ByteaArray
-		rows, err := txn.Query(query)
-
-		if err != nil {
-			return isWildcardSchema, err
-		}
-
-		rows.Scan(&wildcardSchemas)
-		d.Set("wildcardSchemas", pgArrayToSet(wildcardSchemas))
-		isWildcardSchema = true
-	}
-
-	return isWildcardSchema, nil
-}
-
 func resourcePostgreSQLGrantRead(db *DBConnection, d *schema.ResourceData) error {
 	if !db.featureSupported(featurePrivileges) {
 		return fmt.Errorf(
@@ -144,6 +112,10 @@ func resourcePostgreSQLGrantRead(db *DBConnection, d *schema.ResourceData) error
 		)
 	}
 
+	return schemaTransactionWrapper(db, d, resourcePostgreSQLGrantReadTransaction)
+}
+
+func resourcePostgreSQLGrantReadTransaction(db *DBConnection, d *schema.ResourceData) error {
 	exists, err := checkRoleDBSchemaExists(db.client, d)
 	if err != nil {
 		return err
@@ -186,26 +158,7 @@ func resourcePostgreSQLGrantCreate(db *DBConnection, d *schema.ResourceData) err
 		return err
 	}
 
-	if objectType == "schema" {
-		isWildcardSchema, err := validateWildcardSchemas(db, d)
-		if err != nil {
-			return err
-		}
-		if isWildcardSchema {
-			var wildcardSchemas = d.Get("wildcardSchemas").(*schema.Set)
-			for _, wildcardSchema := range wildcardSchemas.List() {
-				d.Set("schema", wildcardSchema)
-				if err := resourcePostgreSQLGrantCreateTransaction(db, d); err != nil {
-					return err
-				}
-			}
-			return nil
-		} else {
-			return resourcePostgreSQLGrantCreateTransaction(db, d) // clean up duplicate code...
-		}
-	}
-
-	return resourcePostgreSQLGrantCreateTransaction(db, d)
+	return schemaTransactionWrapper(db, d, resourcePostgreSQLGrantCreateTransaction)
 }
 
 func resourcePostgreSQLGrantCreateTransaction(db *DBConnection, d *schema.ResourceData) error {
@@ -259,6 +212,10 @@ func resourcePostgreSQLGrantDelete(db *DBConnection, d *schema.ResourceData) err
 		)
 	}
 
+	return schemaTransactionWrapper(db, d, resourcePostgreSQLGrantDeleteTransaction)
+}
+
+func resourcePostgreSQLGrantDeleteTransaction(db *DBConnection, d *schema.ResourceData) error {
 	txn, err := startTransaction(db.client, d.Get("database").(string))
 	if err != nil {
 		return err
@@ -705,4 +662,61 @@ func getRolesToGrant(txn *sql.Tx, d *schema.ResourceData) ([]string, error) {
 	}
 
 	return owners, nil
+}
+
+//private function?
+//question whether we want to allow further modularity with regex, etc...
+func validateWildcardSchemas(db *DBConnection, d *schema.ResourceData) (bool, error) {
+
+	//not 100% sure if an explicit transaction commit is necessary here considering its a read-only query.
+	//not sure how the underlying package is closing transactions for queries....
+	database := d.Get("database").(string)
+	txn, err := startTransaction(db.client, database)
+	if err != nil {
+		return false, err
+	}
+	defer deferredRollback(txn)
+
+	schemaName := d.Get("schema").(string)
+	var isWildcardSchema = false
+
+	if query, exists := schemaWildcardQueries[schemaName]; exists {
+		var wildcardSchemas pq.ByteaArray
+		rows, err := txn.Query(query)
+
+		if err != nil {
+			return isWildcardSchema, err
+		}
+
+		rows.Scan(&wildcardSchemas)
+		d.Set("wildcardSchemas", pgArrayToSet(wildcardSchemas))
+		isWildcardSchema = true
+	}
+
+	return isWildcardSchema, nil
+}
+
+//should be private and maybe moved to different file.
+func schemaTransactionWrapper(db *DBConnection, d *schema.ResourceData, transactionFunc func(db *DBConnection, d *schema.ResourceData) error) error {
+	objectType := d.Get("object_type").(string)
+	if objectType == "schema" {
+		isWildcardSchema, err := validateWildcardSchemas(db, d)
+		if err != nil {
+			return err
+		}
+		if isWildcardSchema {
+			var wildcardSchemas = d.Get("wildcardSchemas").(*schema.Set)
+			for _, wildcardSchema := range wildcardSchemas.List() {
+				d.Set("schema", wildcardSchema)
+				if err := transactionFunc(db, d); err != nil {
+					return err
+				}
+			}
+			return nil
+		} else {
+			return transactionFunc(db, d)
+		}
+	} else {
+		return transactionFunc(db, d)
+	}
 }
