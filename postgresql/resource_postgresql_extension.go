@@ -355,3 +355,8 @@ func getDBExtName(d *schema.ResourceData, client *Client) (string, string, error
 	}
 	return database, extName, nil
 }
+
+//get all schemas
+func getAllDbSchemas(db *DBConnection, client *Client, databaseName string) string {
+
+}

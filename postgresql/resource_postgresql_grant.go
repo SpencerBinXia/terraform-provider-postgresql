@@ -31,6 +31,19 @@ var objectTypes = map[string]string{
 	"schema":   "n",
 }
 
+var schemaWildcardQueries = map[string]string{
+	"pg_*-r": `
+	SELECT schema_name
+	FROM information_schema.schemata;
+	`,
+	"pg_*+r": `
+	SELECT schema_name
+	FROM information_schema.schemata
+	WHERE s.schema_name NOT LIKE 'pg_%'
+	AND s.schema_name <> 'information_schema'
+	`,
+}
+
 func resourcePostgreSQLGrant() *schema.Resource {
 	return &schema.Resource{
 		Create: PGResourceFunc(resourcePostgreSQLGrantCreate),
@@ -91,6 +104,38 @@ func resourcePostgreSQLGrant() *schema.Resource {
 	}
 }
 
+//private function?
+//question whether we want to allow further modularity with regex, etc...
+func validateWildcardSchemas(db *DBConnection, d *schema.ResourceData) (bool, error) {
+
+	//not 100% sure if an explicit transaction commit is necessary here considering its read-only.
+	//not sure how the underlying package is closing transactions for queries....
+	database := d.Get("database").(string)
+	txn, err := startTransaction(db.client, database)
+	if err != nil {
+		return false, err
+	}
+	defer deferredRollback(txn)
+
+	schemaName := d.Get("schema").(string)
+	var isWildcardSchema = false
+
+	if query, exists := schemaWildcardQueries[schemaName]; exists {
+		var wildcardSchemas pq.ByteaArray
+		rows, err := txn.Query(query)
+
+		if err != nil {
+			return isWildcardSchema, err
+		}
+
+		rows.Scan(&wildcardSchemas)
+		d.Set("wildcardSchemas", pgArrayToSet(wildcardSchemas))
+		isWildcardSchema = true
+	}
+
+	return isWildcardSchema, nil
+}
+
 func resourcePostgreSQLGrantRead(db *DBConnection, d *schema.ResourceData) error {
 	if !db.featureSupported(featurePrivileges) {
 		return fmt.Errorf(
@@ -129,7 +174,7 @@ func resourcePostgreSQLGrantCreate(db *DBConnection, d *schema.ResourceData) err
 	// Validate parameters.
 	objectType := d.Get("object_type").(string)
 	if d.Get("schema").(string) == "" && !sliceContainsStr([]string{"database", "foreign_data_wrapper", "foreign_server"}, objectType) {
-		return fmt.Errorf("parameter 'schema' is mandatory for postgresql_grant resource")
+		return fmt.Errorf("parameter 'schema' or 'schemas' is mandatory for postgresql_grant resource")
 	}
 	if d.Get("objects").(*schema.Set).Len() > 0 && (objectType == "database" || objectType == "schema") {
 		return fmt.Errorf("cannot specify `objects` when `object_type` is `database` or `schema`")
@@ -141,8 +186,30 @@ func resourcePostgreSQLGrantCreate(db *DBConnection, d *schema.ResourceData) err
 		return err
 	}
 
-	database := d.Get("database").(string)
+	if objectType == "schema" {
+		isWildcardSchema, err := validateWildcardSchemas(db, d)
+		if err != nil {
+			return err
+		}
+		if isWildcardSchema {
+			var wildcardSchemas = d.Get("wildcardSchemas").(*schema.Set)
+			for _, wildcardSchema := range wildcardSchemas.List() {
+				d.Set("schema", wildcardSchema)
+				if err := resourcePostgreSQLGrantCreateTransaction(db, d); err != nil {
+					return err
+				}
+			}
+			return nil
+		} else {
+			return resourcePostgreSQLGrantCreateTransaction(db, d) // clean up duplicate code...
+		}
+	}
 
+	return resourcePostgreSQLGrantCreateTransaction(db, d)
+}
+
+func resourcePostgreSQLGrantCreateTransaction(db *DBConnection, d *schema.ResourceData) error {
+	database := d.Get("database").(string)
 	txn, err := startTransaction(db.client, database)
 	if err != nil {
 		return err
@@ -172,6 +239,7 @@ func resourcePostgreSQLGrantCreate(db *DBConnection, d *schema.ResourceData) err
 		return fmt.Errorf("could not commit transaction: %w", err)
 	}
 
+	// check what exactly this id does and whether a new one should be created or reused across multiple schemas
 	d.SetId(generateGrantID(d))
 
 	txn, err = startTransaction(db.client, database)
