@@ -34,6 +34,12 @@ const (
 	featurePrivilegesOnSchemas
 	featureForceDropDatabase
 	featurePid
+	featurePublishViaRoot
+	featurePubTruncate
+	featurePublication
+	featurePubWithoutTruncate
+	featureFunction
+	featureServer
 )
 
 var (
@@ -86,6 +92,23 @@ var (
 		// Column procpid was replaced by pid in pg_stat_activity
 		// for Postgresql >= 9.2 and above
 		featurePid: semver.MustParseRange(">=9.2.0"),
+
+		// attribute publish_via_partition_root for partition is supported
+		featurePublishViaRoot: semver.MustParseRange(">=13.0.0"),
+
+		// attribute pubtruncate for publications is supported
+		featurePubTruncate: semver.MustParseRange(">=11.0.0"),
+
+		// attribute pubtruncate for publications is supported
+		featurePubWithoutTruncate: semver.MustParseRange("<11.0.0"),
+
+		// publication is Supported
+		featurePublication: semver.MustParseRange(">=10.0.0"),
+
+		// We do not support CREATE FUNCTION for Postgresql < 8.4
+		featureFunction: semver.MustParseRange(">=8.4.0"),
+		// CREATE SERVER support
+		featureServer: semver.MustParseRange(">=10.0.0"),
 	}
 )
 
@@ -250,12 +273,13 @@ func (c *Client) Connect() (*DBConnection, error) {
 		var db *sql.DB
 		var err error
 		if c.config.Scheme == "postgres" {
-			db, err = sql.Open("postgres", dsn)
+			db, err = sql.Open(proxyDriverName, dsn)
 		} else {
 			db, err = postgres.Open(context.Background(), dsn)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("Error connecting to PostgreSQL server %s (scheme: %s): %w", c.config.Host, c.config.Scheme, err)
+			errString := strings.Replace(err.Error(), c.config.Password, "XXXX", 2)
+			return nil, fmt.Errorf("Error connecting to PostgreSQL server %s (scheme: %s): %s", c.config.Host, c.config.Scheme, errString)
 		}
 
 		// We don't want to retain connection

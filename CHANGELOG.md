@@ -1,20 +1,72 @@
-## 1.15.0-1.0.0(February 23, 2022)
+## 1.18.0 (November 26)
+
+* **New resource**: `postgresql_server` and `postgresql_user_mapping` - @fabiopaiva
+  [#220](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/220)
+
+* **New resource**: `postgresql_subscription` - @nicarl
+  [#244](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/244)
+
+* Allow to configure AWS Region with AWS IAM Auth - @bpaquet
+  [#260](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/260)
+
+* Create temporary file for `GOOGLE_APPLICATION_CREDENTIALS` in Terraform cloud - @minkainc-opensource
+  [#249](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/249)
+
+FIX:
+
+* `postgresql_grant`: Concurrency issue on database privileges - @timothegenzmer
+  [#224](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/224)
+
+* `postgresql_grant`: Remove `TEMP` privileges for database - @cyrilgdn
+  [#243](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/243)
+
+DEV IMPROVEMENTS:
+
+* Update Postgres versions in tests - @cyrilgdn
+
+
+## 1.17.1 (August 19, 2022)
+
+FIX:
+
+* `provider`: Fix segfault on bad credentials when `expected_version` is defined - @cyrilgdn
+  [#242](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/242)
+
+## 1.17.0 (August 19, 2022)
+
+FEATURES
+
+* `postgresql_function`: Add `database` parameter - @LucasBoisserie
+  [#216](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/216)
+
+* `postgresql_role`: Support of ALTER ROLE ... SET ROLE- @kostiantyn-nemchenko
+  [#209](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/209)
+
+FIX:
+
+* `postgresql_publication`: Fix unordered tables - @nguyenhoaibao
+  [#219](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/219)
+
+## 1.16.0 (May 8, 2022)
 
 FEATURES:
 
-* `postgresql_tables`: Add support for table data sources - @SpencerBinXia
-* `postgresql_sequences`: Add support for sequence data sources - @SpencerBinXia
-  [#2](https://github.com/SpencerBinXia/terraform-provider-postgresql/pull/2)
-## 1.15.0-0.1.0(February 23, 2022)
+* Add SOCKS proxy support - @Tenzer
+  [#195](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/195)
 
-FEATURES:
+* New resource: `postgresql_function` - @dump247
+  [#200](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/200)
 
-* `postgresql_schemas`: Add support for schema data sources - @SpencerBinXia
-  [#171](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/171)
-  
-## cyrildgn Original Changelog Below:
+* New resource: `postgresql_publication` - @chromko
+  [#192](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/192)
 
-## Unreleased
+DEV IMPROVEMENTS:
+
+* Update gocloud to v0.25 - @alethenorio
+  [#204](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/204)
+
+* Update terraform-plugin-sdk to v2.15 - @cyrilgdn
+  [#205](https://github.com/cyrilgdn/terraform-provider-postgresql/pull/205)
 
 ## 1.15.0 (February 4,  2022)
 
